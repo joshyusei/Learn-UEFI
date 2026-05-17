@@ -79,6 +79,69 @@ dw 0xaa55
 
 ---
 
+### 2026-05-16：EDK2 環境建置與 UEFI 模擬
+
+今天從傳統的 Legacy BIOS 轉向現代的 **UEFI (Unified Extensible Firmware Interface)** 開發。使用了 TianoCore 的開源實作 **EDK2 (EFI Development Kit II)**。
+
+#### 🛠️ 開發環境配置 (Windows / VS2022)
+
+UEFI 開發環境比 Legacy BIOS 複雜許多，需要完整的編譯工具鏈：
+
+1. **Visual Studio 2022**
+   - 安裝「使用 C++ 的桌面開發」工具包。這是目前 Windows 下開發 EDK2 最穩定的工具鏈。
+   ![VS-C++](images/260516_VS-C++.png)
+
+2. **EDK2 源碼與子模組**
+   ```powershell
+   git clone https://github.com/tianocore/edk2.git
+   git checkout edk2-stable202602
+   git submodule update --init
+   ```
+   - **注意**: EDK2 依賴許多外部函式庫（如 OpenSSL, brotli），必須執行子模組更新。
+
+3. **BaseTools 編譯**
+   ```powershell
+   .\edksetup.bat Rebuild
+   ```
+   - 這會自動使用 VS2022 編譯 EDK2 自有的開發工具（如 `GenFv`, `VfrCompile` 等）。
+
+#### 💻 核心技術詳解
+
+##### 1. EmulatorPkg：在 Windows 上模擬 UEFI
+`EmulatorPkg` 允許我們在 Windows 視窗中直接運行一個 UEFI 環境（`WinHost.exe`），這對於初步調試應用程式非常方便。
+
+- **編譯命令**:
+  ```powershell
+  build -p EmulatorPkg/EmulatorPkg.dsc -a X64
+  ```
+- **執行結果**:
+  在 `Build\EmulatorX64\DEBUG_VS2022\X64` 下執行 `WinHost.exe`，可以進入 UEFI Shell 並執行 `HelloWorld.efi`。
+  ![HelloWorld](images/260516_WinHost-HelloWorld.png)
+
+##### 2. OvmfPkg (Open Virtual Machine Firmware)
+OVMF 是專門為虛擬機（如 QEMU/KVM）開發的開源 UEFI 韌體。
+
+- **相依工具**: 需要安裝 `iasl` (ACPI 編譯器) 並設定環境變數 `IASL_PREFIX` 與 `NASM_PREFIX`。
+- **編譯**:
+  ```powershell
+  build -p OvmfPkg/OvmfPkgX64.dsc -a X64 -b RELEASE
+  ```
+- **測試環境搭建**:
+  建立一個模擬磁碟目錄 `uefi_test/bios_dir/EFI/BOOT/`，將編譯出的 `.efi` 檔案重新命名為 `BOOTX64.EFI`。這是 UEFI 的預設啟動路徑，韌體會自動尋找並執行它。
+
+#### 🚀 QEMU 執行命令
+```powershell
+# -bios 指定 UEFI 韌體檔案
+# -drive fat:rw: 指定一個資料夾作為虛擬的 FAT32 磁碟
+qemu-system-x86_64 -bios OVMF.fd -drive format=raw,file=fat:rw:bios_dir
+```
+
+#### 📸 執行結果
+![QEMU OVMF](images/260516_QEMU-OVMF.gif)
+
+---
+
 ## 🔗 參考資料
 - [世界第一簡單的UEFI，實作打造自己的開機畫面](https://ithelp.ithome.com.tw/users/20161828/ironman/6446)
 - [OSDev Wiki - Boot Sequence](https://wiki.osdev.org/Boot_Sequence)
+- [UEFI BIOS 開發環境配置](https://hackmd.io/@IloveFSF/B1x1SNEBy1e)
